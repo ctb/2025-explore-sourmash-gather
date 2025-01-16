@@ -74,14 +74,22 @@ def columns(args):
 
 
 def display(args):
-    print(f"** displaying gather results for given CSVs")
     combined = _load_files(args.gather_csvs).collect()
+    columns = combined.collect_schema().names()
+    if 'f_unique_weighted' in columns: # autodetect: gather
+        display_gather(args, combined)
 
+
+def display_gather(args, combined):
+    print(f"** displaying gather results for given CSVs")
+
+    # @CTB: catch 'name' for old-style gather results.
     queries = set(combined['query_name'])
 
     for q in queries:
         df = combined.filter(pl.col('query_name') == q)
         df = df.sort("f_unique_weighted", descending=True)[:args.display_num_results]
+        df = df.filter(pl.col('f_unique_weighted') >= args.threshold)
 
         sum_sofar = 0
         total = sum(df['f_unique_weighted'])
@@ -95,7 +103,7 @@ def display(args):
 
             if not args.filter or args.filter in row['match_name']:
                 if not did_disp:
-                    print(f"\nQuery: {_display_name(q)} ({_percent(total)} assigned)")
+                    print(f"\nQuery: {_display_name(q)} ({_percent(total)} assigned in {len(df)} matches)")
                     did_disp = True
                 print(f"  {rank+1}: {match_name} - {f_uniq_p} ({_percent(sum_sofar)}) - {intersect_bp}")
         if not did_disp:
@@ -119,6 +127,7 @@ def main():
     p_display.add_argument('gather_csvs', nargs='+')
     p_display.add_argument('-l', '--filter', help="filter matches on substring")
     p_display.add_argument('-n', '--display-num-results', help="display this many results", default=3, type=int)
+    p_display.add_argument('-t', '--threshold', help='filter at this threshold', default=0.01, type=float)
     p_display.set_defaults(func=display)
 
     p_columns = subparsers.add_parser('columns', help='display columns')
